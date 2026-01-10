@@ -1,8 +1,11 @@
-### k8s1.35 The Hard Way (rocky linux)
-rocky 9.7, kernal 5.14에서 k8s 1.35를 하나씩 구축하는 과정이다. 파드 생성까지 서비스 생성(노드 포트)까지 테스트는 완료했으나, 커널 파라미터 설정, [커널에 따른 기능 지원 버전](https://kubernetes.io/docs/reference/node/kernel-version-requirements/)등으로 인해 k8s v1.35에서 제공하는 모든 기능이 동작하지 않을 것으로 보인다. 
+### k8s v1.35 The Hard Way (rocky linux)
+rocky 9.7, kernal 5.14에서 k8s v1.35를 하나씩 구축하는 과정이다. 파드 생성부터 서비스 생성(노드 포트)까지 테스트는 완료했으나, 커널 파라미터 설정, [커널에 따른 기능 지원 버전](https://kubernetes.io/docs/reference/node/kernel-version-requirements/)등으로 인해 k8s v1.35에서 제공하는 모든 기능이 동작하지 않을 것으로 보인다. 
 
 ### vagrant 명령어 정리 
 ```sh
+brew install --cask virtualbox
+brew install --cask vagrant
+
 # vm 생성
 vagrant up
 vagrant box list
@@ -10,6 +13,17 @@ vagrant status
 # vm 리소스 정리 
 vagrant destroy -f && rm -rf .vagrant
 ```
+
+### ch1 Prerequisites
+server는 컨트롤 플레인, node는 워커 노드 역할을 담담한다. jumpbox는 bastion 역할을 수행한다. jumpbox에 의해 각 노드에 필요한 요소들을 배포한다. 
+
+| NAME | Description | CPU | RAM | NIC1 | NIC2 | HOSTNAME |
+| --- | --- | --- | --- | --- | --- | --- |
+| jumpbox | Administration host | 2 | 1536 MB | 10.0.2.15 | **192.168.10.10** | **jumpbox** |
+| server | Kubernetes server | 2 | 2GB | 10.0.2.15 | **192.168.10.100** | server.kubernetes.local **server** |
+| node-0 | Kubernetes worker  | 2 | 2GB | 10.0.2.15 | **192.168.10.101** | node-0.kubernetes.local **node-0** |
+| node-1 | Kubernetes worker  | 2 | 2GB | 10.0.2.15 | **192.168.10.102** | node-1.kubernetes.local **node-1** |
+
 
 ### ch2 Set Up The Jumpbox
 ```sh
@@ -20,7 +34,13 @@ cd kubernetes-the-hard-way
 tree
 pwd 
 
+# 버전 정의
 ARCH=$(rpm --eval '%{_arch}')
+CONTAINERD_VERSION="2.2.0"
+CNI_VERSION="1.9.0"
+RUNC_VERSION="1.3.4"
+ETCD_VERSION="3.6.7"
+
 if [ "$ARCH" = "aarch64" ]; then
   BIN_ARCH="arm64"
 else
@@ -37,11 +57,12 @@ sed -i 's/v1\.32\.0/v1.35\.0/g' downloads-${BIN_ARCH}.txt
 
 # k8s v1.35에 일치하거나 최신 버전 사용
 vi downloads-${BIN_ARCH}.txt 
-https://github.com/containerd/containerd/releases/download/v2.2.0/containerd-2.2.0-linux-arm64.tar.gz
-https://github.com/containernetworking/plugins/releases/download/v1.9.0/cni-plugins-linux-arm64-v1.9.0.tgz
-https://github.com/opencontainers/runc/releases/download/v1.3.4/runc.arm64
-https://github.com/etcd-io/etcd/releases/download/v3.6.7/etcd-v3.6.7-linux-arm64.tar.gz
+https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${BIN_ARCH}.tar.gz
+https://github.com/containernetworking/plugins/releases/download/v${CNI_VERSION}/cni-plugins-linux-${BIN_ARCH}-v${CNI_VERSION}.tgz
+https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.${BIN_ARCH}
+https://github.com/etcd-io/etcd/releases/download/v${ETCD_VERSION}/etcd-v${ETCD_VERSION}-linux-${BIN_ARCH}.tar.gz
 
+# 다운로드 
 wget -q --show-progress \
   --https-only \
   --timestamping \
@@ -74,18 +95,18 @@ downloads
 tar -xvf downloads/crictl-v1.35.0-linux-${BIN_ARCH}.tar.gz \
   -C downloads/worker/ && tree -ug downloads
 
-tar -xvf downloads/containerd-2.2.0-linux-${BIN_ARCH}.tar.gz \
+tar -xvf downloads/containerd-${CONTAINERD_VERSION}-linux-${BIN_ARCH}.tar.gz \
   --strip-components 1 \
   -C downloads/worker/ && tree -ug downloads
 
-tar -xvf downloads/cni-plugins-linux-${BIN_ARCH}-v1.9.0.tgz \
+tar -xvf downloads/cni-plugins-linux-${BIN_ARCH}-v${CNI_VERSION}.tgz \
   -C downloads/cni-plugins/ && tree -ug downloads
 
-tar -xvf downloads/etcd-v3.6.7-linux-${BIN_ARCH}.tar.gz \
+tar -xvf downloads/etcd-v${ETCD_VERSION}-linux-${BIN_ARCH}.tar.gz \
   -C downloads/ \
   --strip-components 1 \
-  etcd-v3.6.7-linux-${BIN_ARCH}/etcdctl \
-  etcd-v3.6.7-linux-${BIN_ARCH}/etcd && tree -ug downloads
+  etcd-v${ETCD_VERSION}-linux-${BIN_ARCH}/etcdctl \
+  etcd-v${ETCD_VERSION}-linux-${BIN_ARCH}/etcd && tree -ug downloads
 
 tree downloads/worker/
 tree downloads/cni-plugins
@@ -104,7 +125,7 @@ tree downloads/worker/
 ls -l downloads/*gz
 rm -rf downloads/*gz
 
-
+# 실행 권한 부여 
 chmod +x downloads/{client,cni-plugins,controller,worker}/*
 ls -l downloads/{client,cni-plugins,controller,worker}/*
 
@@ -132,6 +153,7 @@ cat <<EOF > machines.txt
 EOF
 cat machines.txt
 
+# vm 정의 출력 
 while read IP FQDN HOST SUBNET; do
   echo "${IP} ${FQDN} ${HOST} ${SUBNET}"
 done < machines.txt
@@ -143,11 +165,13 @@ PermitRootLogin yes
 
 ls -al /root/.ssh 
 
+# 키 생성 
 ssh-keygen -t rsa -N "" -f /root/.ssh/id_rsa
 ls -l /root/.ssh
 -rw-------. 1 root root 2602 Jan 10 19:14 id_rsa
 -rw-r--r--. 1 root root  566 Jan 10 19:14 id_rsa.pub
 
+# 노드에 대한 키 복사, 확인, ssh 동작 확인, dns 설정, 
 while read IP FQDN HOST SUBNET; do
   sshpass -p 'qwe123' ssh-copy-id -o StrictHostKeyChecking=no root@${IP}
 done < machines.txt
@@ -178,6 +202,28 @@ done < machines.txt
 ```
 
 ### ch4 Provisioning a CA and Generating TLS Certificates
+각 요소에 적용되는 인증서 및 키
+
+| 항목 | 개인키 | CSR | 인증서 | 참고 정보 | X509v3 Extended Key Usage |
+| --- | --- | --- | --- | --- | --- |
+| Root CA | ca.key | X | ca.crt |  |  |
+| admin | admin.key | admin.csr | admin.crt | CN = admin, O = system:masters | TLS **Web Client** Authentication |
+| node-0 | node-0.key | node-0.csr | node-0.crt | CN = system:node:node-0, O = system:nodes | TLS **Web Server / Client** Authentication |
+| node-1 | node-1.key | node-1.csr | node-1.crt | CN = system:node:node-1, O = system:nodes | TLS **Web Server / Client** Authentication |
+| kube-proxy | kube-proxy.key | kube-proxy.csr | kube-proxy.crt | CN = system:kube-proxy, O = system:node-proxier | TLS **Web** Server / **Client** Authentication |
+| kube-scheduler | kube-scheduler.key | kube-scheduler | kube-scheduler.crt | CN = system:kube-scheduler, O = system:kube-scheduler | TLS **Web** Server / **Client** Authentication |
+| kube-controller-manager | kube-controller-manager.key | kube-controller-manager.csr | kube-controller-manager.crt | CN = system:kube-controller-manager, O = system:kube-controller-manager | TLS **Web** Server / **Client** Authentication |
+| kube-api-server | kube-api-server.key | kube-api-server.csr | kube-api-server.crt | CN = kubernetes, SAN: IP(127.0.0.1, **10.32.0.1**), DNS(kubernetes,..) | TLS **Web Server / Client** Authentication |
+| service-accounts | service-accounts.key | service-accounts.csr | service-accounts.crt | CN = service-accounts | TLS **Web Client** Authentication |
+
+| 항목 | 네트워크 대역 or IP |
+| --- | --- |
+| **clusterCIDR** | 10.200.0.0/16 |
+| → node-0 PodCIDR | 10.200.0.0/24 |
+| → node-1 PodCIDR | 10.200.1.0/24 |
+| **ServiceCIDR** | **10.32.0.0/24** |
+| → **api clusterIP** | **10.32.0.1** |
+
 ```sh
 cat ca.conf
 
@@ -189,11 +235,13 @@ ls -l ca.key
 # 개인키 구조 확인
 openssl rsa -in ca.key -text -noout 
 
+# root 인증서 생성
 openssl req -x509 -new -sha512 -noenc \
     -key ca.key -days 3653 \
     -config ca.conf \
     -out ca.crt
 
+# 공식 문서에서는 누락되어있는 항목
 openssl genrsa -out admin.key 4096
 
 openssl req -new -key admin.key -sha256 \
@@ -216,6 +264,7 @@ CN = system:kube-scheduler
 O  = system:system:kube-scheduler
 
 sed -i 's/system:system:kube-scheduler/system:kube-scheduler/' ca.conf
+
 cat ca.conf | grep system:kube-scheduler
 CN = system:kube-scheduler
 O  = system:kube-scheduler
@@ -230,7 +279,7 @@ certs=(
 )
 echo ${certs[*]}
 
-# k8s 컴포넌트 관련한 키 생성
+# k8s 컴포넌트 관련 키 생성
 for i in ${certs[*]}; do
   openssl genrsa -out "${i}.key" 4096
 
@@ -249,7 +298,7 @@ done
 ls -1 *.crt *.key *.csr | wc -l 
 26 
 
-# 키 확인
+# 인증서 확인
 openssl x509 -in node-0.crt -text -noout
 openssl x509 -in node-1.crt -text -noout
 openssl x509 -in kube-proxy.crt -text -noout
@@ -271,8 +320,10 @@ for host in node-0 node-1; do
     root@$host:/var/lib/kubelet/kubelet.key
 done
 
+# node-0, node-1 복사 확인 
 ssh node-0 ls -l /var/lib/kubelet 
 
+# 컨트롤 플레인 인증서, 인증키 배포
 scp \
   ca.key ca.crt \
   kube-api-server.key kube-api-server.crt \
@@ -452,11 +503,13 @@ ssh server ls -l /root/encryption-config.yaml
 
 ### ch7 Bootstrapping the etcd cluster
 ```sh
+# 서버명 : controller
 cat units/etcd.service | grep controller
   --name controller \
   --initial-cluster controller=http://127.0.0.1:2380 \
 
 # 서버명 변경 controller -> server 
+ETCD_NAME=server
 cat > units/etcd.service <<EOF
 [Unit]
 Description=etcd
@@ -481,16 +534,19 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+# 변경 확인
 cat units/etcd.service | grep server
   --name server \
   --initial-cluster server=http://127.0.0.1:2380 \
 
+# etcd 바이너리 및 서비스 배포 
 scp \
   downloads/controller/etcd \
   downloads/client/etcdctl \
   units/etcd.service \
   root@server:~/
 
+# etcd 설정
 ssh root@server
 
 mv etcd etcdctl /usr/local/bin/
@@ -516,6 +572,7 @@ LISTEN    0          4096               127.0.0.1:2379              0.0.0.0:*   
 
 systemctl status etcd --no-pager
 
+# etcd 검증
 etcdctl member list -w table
 etcdctl endpoint status -w table
 exit 
@@ -529,6 +586,8 @@ IP.0  = 127.0.0.1
 IP.1  = 10.32.0.1
 
 cat units/kube-apiserver.service
+
+# k8s 서비스 IP 범위 설정 
 cat << EOF > units/kube-apiserver.service
 [Unit]
 Description=Kubernetes API Server
@@ -569,12 +628,14 @@ WantedBy=multi-user.target
 EOF
 cat units/kube-apiserver.service
 
+# api-server와 kubelet에 접근 가능한 시스템 내부용 RBAC 설정. kubelet이 api-sever에게 요청을 보내는 경우도 있지만, 반대로 api-server도 kubelet에 요청을 보내는 경우가 있기 때문이다.
 cat configs/kube-apiserver-to-kubelet.yaml ; echo
 
 openssl x509 -in kube-api-server.crt -text -noout
 
 cat units/kube-controller-manager.service ; echo
 
+# k8s 컨트롤플레인 컴포넌트 전송
 scp \
   downloads/controller/kube-apiserver \
   downloads/controller/kube-controller-manager \
@@ -587,6 +648,7 @@ scp \
   configs/kube-apiserver-to-kubelet.yaml \
   root@server:~/
 
+# 검증
 ssh server ls -l /root
 
 ssh root@server
@@ -599,15 +661,14 @@ mv kube-apiserver \
 
 ls -l /usr/local/bin/kube-*
 
-mkdir -p /var/lib/kubernetes/
 
+# 키 및 인증서, 설정 이동 
+mkdir -p /var/lib/kubernetes/
 mv ca.crt ca.key \
     kube-api-server.key kube-api-server.crt \
     service-accounts.key service-accounts.crt \
     encryption-config.yaml \
     /var/lib/kubernetes/
-ls -l /var/lib/kubernetes/
-
 mv kube-apiserver.service /etc/systemd/system/kube-apiserver.service
 mv kube-controller-manager.kubeconfig /var/lib/kubernetes/
 mv kube-controller-manager.service /etc/systemd/system/
@@ -615,10 +676,14 @@ mv kube-scheduler.kubeconfig /var/lib/kubernetes/
 mv kube-scheduler.yaml /etc/kubernetes/config/
 mv kube-scheduler.service /etc/systemd/system/
 
+ls -l /var/lib/kubernetes/
+
+# 실행
 systemctl daemon-reload
 systemctl enable kube-apiserver kube-controller-manager kube-scheduler
 systemctl start  kube-apiserver kube-controller-manager kube-scheduler
 
+# 검증
 ss -tlp | grep kube
 LISTEN 0      4096               *:sun-sr-https            *:*    users:(("kube-apiserver",pid=7582,fd=3))                
 LISTEN 0      4096               *:10259                   *:*    users:(("kube-scheduler",pid=7591,fd=3))                
@@ -626,15 +691,15 @@ LISTEN 0      4096               *:10257                   *:*    users:(("kube-
 
 systemctl is-active kube-apiserver
 systemctl status kube-apiserver --no-pager
-journalctl -u kube-apiserver --no-pager
-
 systemctl status kube-scheduler --no-pager
 systemctl status kube-controller-manager --no-pager
+journalctl -u kube-apiserver --no-pager
 
 kubectl cluster-info dump --kubeconfig admin.kubeconfig
 kubectl cluster-info --kubeconfig admin.kubeconfig
 Kubernetes control plane is running at https://127.0.0.1:6443
 
+# 서비스 확인
 kubectl get service,ep --kubeconfig admin.kubeconfig
 NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
 service/kubernetes   ClusterIP   10.32.0.1    <none>        443/TCP   2m50s
@@ -651,16 +716,23 @@ kubectl describe clusterrolebindings system:kube-scheduler --kubeconfig admin.ku
 ```
 
 RBAC for Kubelet Authorization
+
 ```sh
+# 앞서 말한 api-server가 kubelet에 요청을 보낼수 잇도록 rbac 설정, Webhook으로 동작한다.
 cat kube-apiserver-to-kubelet.yaml
 kubectl apply -f kube-apiserver-to-kubelet.yaml \
   --kubeconfig admin.kubeconfig
+
+cat kubelet-config.yaml 
+authorization:
+  mode: Webhook
 
 kubectl get clusterroles system:kube-apiserver-to-kubelet --kubeconfig admin.kubeconfig
 kubectl get clusterrolebindings system:kube-apiserver --kubeconfig admin.kubeconfig
 
 exit
 
+# 검증
 curl -s -k --cacert ca.crt https://server.kubernetes.local:6443/version | jq
 {
   "major": "1",
@@ -684,6 +756,7 @@ curl -s -k --cacert ca.crt https://server.kubernetes.local:6443/version | jq
 cat configs/10-bridge.conf | jq
 cat configs/kubelet-config.yaml | yq eval
 
+# kubelet 설정 및 cni 설정 배포
 for host in node-0 node-1; do
   SUBNET=$(grep $host machines.txt | cut -d " " -f 4)
   sed "s|SUBNET|$SUBNET|g" \
@@ -730,11 +803,10 @@ ssh node-1 ls -l /root
 ssh node-0 ls -l /root/cni-plugins
 ssh node-1 ls -l /root/cni-plugins
 
- 
 # 그리고 node-0에서도 동일한 작업 진행
 ssh root@node-1 
 dnf -y update
-dnf -y install socat conntrack ipset tar
+dnf -y install socat conntrack ipset tar bridge-utils
 
 # 미출력 시 swaaoff
 swapon --show
@@ -771,6 +843,7 @@ sysctl net.ipv4.ip_forward
 # https://kubernetes.io/docs/setup/production-environment/container-runtimes/#install-and-configure-prerequisites
 
 
+# containerd, kubelet, kube-proxy 설정
 mkdir -p /etc/containerd/
 mv containerd-config.toml /etc/containerd/config.toml
 mv containerd.service /etc/systemd/system/
@@ -823,18 +896,31 @@ kubectl config set-context kubernetes-the-hard-way \
 
 kubectl config use-context kubernetes-the-hard-way
 
+# 앞서 설정한 값들이 .kubeconfig에 정의되어 사용된다.
+cat /root/.kube/config 
+
 kubectl version
 Client Version: v1.35.0
 Kustomize Version: v5.7.1
 Server Version: v1.35.0
 
-kubectl get nodes
+# kubeconfig를 참조하는 위치
+kubectl get nodes -v=6
+I0111 01:53:16.713164    7465 loader.go:405] Config loaded from file:  /root/.kube/config
 NAME     STATUS   ROLES    AGE     VERSION
 node-0   Ready    <none>   3h17m   v1.35.0
 node-1   Ready    <none>   2m46s   v1.35.0
 ```
 
 ### ch11 Provisioning Pod Network Routes
+| 항목 | 네트워크 대역 or IP |
+| --- | --- |
+| clusterCIDR | 10.200.0.0/16 |
+| → node-0 PodCIDR | **10.200.0.0/24** |
+| → node-1 PodCIDR | **10.200.1.0/24** |
+| ServiceCIDR | 10.32.0.0/24 |
+| → api clusterIP | 10.32.0.1 |
+
 ```sh
 {
   SERVER_IP=$(grep server machines.txt | cut -d " " -f 1)
@@ -845,6 +931,7 @@ node-1   Ready    <none>   2m46s   v1.35.0
 }
 
 echo $SERVER_IP $NODE_0_IP $NODE_0_SUBNET $NODE_1_IP $NODE_1_SUBNET
+192.168.10.100 192.168.10.101 10.200.0.0/24 192.168.10.102 10.200.1.0/24
 
 ssh root@server <<EOF
   ip route add ${NODE_0_SUBNET} via ${NODE_0_IP}
@@ -859,14 +946,15 @@ ssh root@node-1 <<EOF
   ip route add ${NODE_0_SUBNET} via ${NODE_0_IP}
 EOF
 
-# before
+# 라우팅 확인
+## before
 ssh server ip -c route
 default via 10.0.2.2 dev enp0s8 proto dhcp src 10.0.2.15 metric 100 
 10.0.2.0/24 dev enp0s8 proto kernel scope link src 10.0.2.15 metric 100 
 192.168.10.0/24 dev enp0s9 proto kernel scope link src 192.168.10.100 metric 101
 
-# after 
-# node-cidr에 대한 라우팅이 추가되엇다
+## after 
+## node-pod-cidr에 대한 라우팅이 추가되엇다
 ssh server ip -c route
 default via 10.0.2.2 dev enp0s8 proto dhcp src 10.0.2.15 metric 100 
 10.0.2.0/24 dev enp0s8 proto kernel scope link src 10.0.2.15 metric 100 
@@ -879,7 +967,6 @@ ssh root@node-0 ip route
 
 ssh root@node-1 ip route
 10.200.1.0/24 via 192.168.10.102 dev enp0s9 
-
 ```
 
 ## ch12 Smoke Test 
@@ -888,6 +975,12 @@ ssh root@node-1 ip route
 kubectl create secret generic kubernetes-the-hard-way \
   --from-literal="mykey=mydata"
 
+# Kubernetes Secret이 etcd에 AES-CBC 방식으로 정상 암호화되어 저장되고 있음을 증명하는 출력
+# k8s:enc	: Kubernetes 암호화 포맷
+# aescbc	: 암호화 알고리즘 (AES-CBC)
+# v1	    : encryption provider 버전
+# key1	  : 사용된 encryption key 이름
+# 이후 데이터는 암호화된 데이터
 ssh root@server \
     'etcdctl get /registry/secrets/default/kubernetes-the-hard-way | hexdump -C'
 00000000  2f 72 65 67 69 73 74 72  79 2f 73 65 63 72 65 74  |/registry/secret|
@@ -897,30 +990,16 @@ ssh root@server \
 00000040  3a 76 31 3a 6b 65 79 31  3a ad 9a 6e 69 02 e7 53  |:v1:key1:..ni..S|
 00000050  50 88 99 34 80 88 0a 26  b2 3a 35 6a 9b fa d4 5d  |P..4...&.:5j...]|
 00000060  5f ed 12 30 d5 f5 e1 d7  7e cb 94 56 68 00 f4 74  |_..0....~..Vh..t|
-00000070  ef 45 78 96 a9 71 f1 da  6d a5 97 9f d4 8f bd 25  |.Ex..q..m......%|
-00000080  23 82 18 7c 40 7e 76 6e  67 79 70 53 4b 38 3d 81  |#..|@~vngypSK8=.|
-00000090  c8 ea 30 6b 22 d9 36 64  2b 39 f2 c4 27 f7 a0 45  |..0k".6d+9..'..E|
-000000a0  d7 49 01 ad 49 db e9 ea  d6 ac 4f 17 aa 9c 0c dc  |.I..I.....O.....|
-000000b0  b9 bf 11 71 c3 52 b4 bd  39 47 8d 77 a8 4c 48 bd  |...q.R..9G.w.LH.|
-000000c0  6e da 02 df aa 65 a5 d6  77 3f 1e 57 30 92 eb 2a  |n....e..w?.W0..*|
-000000d0  03 98 4a a8 5e 2c 53 73  96 11 0f 5f 6d 54 4d 6e  |..J.^,Ss..._mTMn|
-000000e0  af 3c d9 77 77 9d 93 75  db d0 38 f1 ee f4 84 e9  |.<.ww..u..8.....|
-000000f0  b8 34 19 35 c7 12 14 d0  43 96 e4 df 3f 69 2f c8  |.4.5....C...?i/.|
-00000100  e1 72 85 65 91 b4 43 a8  6b 52 78 73 f4 e6 3a 5f  |.r.e..C.kRxs..:_|
-00000110  7e 86 8d 2c 1b 0f b4 33  e6 68 70 97 0c 0a 75 c5  |~..,...3.hp...u.|
-00000120  04 a7 b7 05 79 4a 25 b3  6c 32 fd 12 fd b0 4b 44  |....yJ%.l2....KD|
-00000130  b9 bd 18 e5 49 25 4f f7  c2 22 60 b5 ab 68 90 b9  |....I%O.."`..h..|
-00000140  e2 d7 fe 07 19 48 d0 8c  21 e7 8d 1b dc f4 2e 2a  |.....H..!......*|
-00000150  45 3a e6 17 6d b8 92 3b  6d 0a                    |E:..m..;m.|
-0000015a
 
 # 파드 생성 테스트
 kubectl create deployment nginx \
   --image=nginx:latest
+kubectl scale deployment nginx --replicas=2
 
-kubectl get pods -l app=nginx
-NAME                    READY   STATUS    RESTARTS   AGE
-nginx-b6485fcbb-tcqfv   1/1     Running   0          14s
+kubectl get pods -l app=nginx -o wide 
+NAME                    READY   STATUS    RESTARTS   AGE   IP           NODE     NOMINATED NODE   READINESS GATES
+nginx-b6485fcbb-9xdcj   1/1     Running   0          18s   10.200.1.2   node-1   <none>           <none>
+nginx-b6485fcbb-tcqfv   1/1     Running   0          89m   10.200.0.2   node-0   <none>           <none>
 
 POD_NAME=$(kubectl get pods -l app=nginx \
   -o jsonpath="{.items[0].metadata.name}")
@@ -947,7 +1026,8 @@ kubectl expose deployment nginx \
 NODE_PORT=$(kubectl get svc nginx \
   --output=jsonpath='{range .spec.ports[0]}{.nodePort}')
 
-curl -I http://node-0:${NODE_PORT}
+curl -s -I http://node-0:${NODE_PORT}
+curl -s -I http://node-1:${NODE_PORT}
 HTTP/1.1 200 OK
 Server: nginx/1.29.4
 

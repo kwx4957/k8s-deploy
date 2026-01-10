@@ -17,6 +17,7 @@ echo "[TASK 4] Install Packages"
 YQ_VERSION=v4.2.0
 PLATFORM=linux_arm64  #$(uname -m), 수정하기 나중에 
 dnf update -qq >/dev/null 2>&1
+dnf install epel-release -y -qq >/dev/null 2>&1
 dnf install tree git jq unzip vim sshpass -y -qq >/dev/null 2>&1
 wget https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_${PLATFORM} -O /usr/local/bin/yq &&\
     chmod +x /usr/local/bin/yq
