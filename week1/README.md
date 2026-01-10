@@ -1,7 +1,6 @@
 ### k8s1.35 The Hard Way (rocky linux)
 rocky 9.7, kernal 5.14에서 k8s 1.35를 하나씩 구축하는 과정이다. 파드 생성까지 서비스 생성(노드 포트)까지 테스트는 완료했으나, 커널 파라미터 설정, [커널에 따른 기능 지원 버전](https://kubernetes.io/docs/reference/node/kernel-version-requirements/)등으로 인해 k8s v1.35에서 제공하는 모든 기능이 동작하지 않을 것으로 보인다. 
 
-
 ### vagrant 명령어 정리 
 ```sh
 # vm 생성
@@ -71,6 +70,7 @@ downloads
 ├── controller
 └── worker
 
+# 다운받은 파일 압축해제 
 tar -xvf downloads/crictl-v1.35.0-linux-${BIN_ARCH}.tar.gz \
   -C downloads/worker/ && tree -ug downloads
 
@@ -91,6 +91,7 @@ tree downloads/worker/
 tree downloads/cni-plugins
 ls -l downloads/{etcd,etcdctl}
 
+# 
 mv downloads/{etcdctl,kubectl} downloads/client/
 mv downloads/{etcd,kube-apiserver,kube-controller-manager,kube-scheduler} downloads/controller/
 mv downloads/{kubelet,kube-proxy} downloads/worker/
@@ -103,9 +104,11 @@ tree downloads/worker/
 ls -l downloads/*gz
 rm -rf downloads/*gz
 
+
 chmod +x downloads/{client,cni-plugins,controller,worker}/*
 ls -l downloads/{client,cni-plugins,controller,worker}/*
 
+# 권한 변경
 chown root:root downloads/client/etcdctl
 chown root:root downloads/controller/etcd
 chown root:root downloads/worker/crictl
@@ -121,6 +124,7 @@ Kustomize Version: v5.7.1
 
 ### ch3 Provisioning Compute Resources
 ```sh
+# vm 리소스 /etc/hosts 정의
 cat <<EOF > machines.txt
 192.168.10.100 server.kubernetes.local server
 192.168.10.101 node-0.kubernetes.local node-0 10.200.0.0/24
@@ -132,6 +136,7 @@ while read IP FQDN HOST SUBNET; do
   echo "${IP} ${FQDN} ${HOST} ${SUBNET}"
 done < machines.txt
 
+# root 및 password 접속 허용
 grep "^[^#]" /etc/ssh/sshd_config
 PasswordAuthentication yes
 PermitRootLogin yes
@@ -172,7 +177,6 @@ while read IP FQDN HOST SUBNET; do
 done < machines.txt
 ```
 
-
 ### ch4 Provisioning a CA and Generating TLS Certificates
 ```sh
 cat ca.conf
@@ -182,19 +186,23 @@ cat ca.conf
 openssl genrsa -out ca.key 4096
 ls -l ca.key
 
-openssl rsa -in ca.key -text -noout # 개인키 구조 확인
+# 개인키 구조 확인
+openssl rsa -in ca.key -text -noout 
 
 openssl req -x509 -new -sha512 -noenc \
     -key ca.key -days 3653 \
     -config ca.conf \
     -out ca.crt
 
-###### 해당 항목을 작업하는 이유에 대해서 잘 모르겟음 
 openssl genrsa -out admin.key 4096
+
 openssl req -new -key admin.key -sha256 \
   -config ca.conf -section admin \
   -out admin.csr
-openssl req -in admin.csr -text -noout # CSR 전체 내용 확인
+
+# CSR 전체 내용 확인
+openssl req -in admin.csr -text -noout
+
 openssl x509 -req -days 3653 -in admin.csr \
   -copy_extensions copyall \
   -sha256 -CA ca.crt \
@@ -212,7 +220,7 @@ cat ca.conf | grep system:kube-scheduler
 CN = system:kube-scheduler
 O  = system:kube-scheduler
 
-# 변수 
+# 변수 정의
 certs=(
   "admin" "node-0" "node-1"
   "kube-proxy" "kube-scheduler"
@@ -222,6 +230,7 @@ certs=(
 )
 echo ${certs[*]}
 
+# k8s 컴포넌트 관련한 키 생성
 for i in ${certs[*]}; do
   openssl genrsa -out "${i}.key" 4096
 
@@ -240,6 +249,7 @@ done
 ls -1 *.crt *.key *.csr | wc -l 
 26 
 
+# 키 확인
 openssl x509 -in node-0.crt -text -noout
 openssl x509 -in node-1.crt -text -noout
 openssl x509 -in kube-proxy.crt -text -noout
@@ -248,7 +258,7 @@ openssl x509 -in kube-controller-manager.crt -text -noout
 openssl x509 -in kube-api-server.crt -text -noout
 openssl x509 -in service-accounts.crt -text -noout
 
-# 모든 k8s 노드 인증서 배포 
+# 노드에 kubelet 인증서 배포 
 for host in node-0 node-1; do
   ssh root@$host mkdir /var/lib/kubelet/
 
@@ -261,7 +271,7 @@ for host in node-0 node-1; do
     root@$host:/var/lib/kubelet/kubelet.key
 done
 
-ssh node-0 ls -l /var/lib/kubelet # node-1
+ssh node-0 ls -l /var/lib/kubelet 
 
 scp \
   ca.key ca.crt \
@@ -385,6 +395,7 @@ kubectl config use-context default \
 ls -l *.kubeconfig
 
 # Distribute the Kubernetes Configuration Files
+## kubelet, kube-proxy 
 for host in node-0 node-1; do
   ssh root@$host "mkdir /var/lib/{kube-proxy,kubelet}"
 
@@ -399,7 +410,7 @@ ssh node-0 ls -l /var/lib/*/kubeconfig
 -rw-------. 1 root root 10141 Jan 10 19:45 /var/lib/kubelet/kubeconfig
 -rw-------. 1 root root 10171 Jan 10 19:45 /var/lib/kube-proxy/kubeconfig
 
-# kube-controle-manager & kube-scheduler
+## kube-controle-manager & kube-scheduler
 scp admin.kubeconfig \
   kube-controller-manager.kubeconfig \
   kube-scheduler.kubeconfig \
@@ -412,6 +423,7 @@ ssh server ls -l /root/*.kubeconfig
 ```
 
 ### ch6 Generating the Data Encryption Config and Key
+etcd는 데이터를 평문으로 저장하기 떄문에 이를 암호화하기 위한 설정 
 ```sh 
 export ENCRYPTION_KEY=$(head -c 32 /dev/urandom | base64)
 echo $ENCRYPTION_KEY
@@ -444,6 +456,7 @@ cat units/etcd.service | grep controller
   --name controller \
   --initial-cluster controller=http://127.0.0.1:2380 \
 
+# 서버명 변경 controller -> server 
 cat > units/etcd.service <<EOF
 [Unit]
 Description=etcd
@@ -557,7 +570,9 @@ EOF
 cat units/kube-apiserver.service
 
 cat configs/kube-apiserver-to-kubelet.yaml ; echo
+
 openssl x509 -in kube-api-server.crt -text -noout
+
 cat units/kube-controller-manager.service ; echo
 
 scp \
@@ -573,6 +588,7 @@ scp \
   root@server:~/
 
 ssh server ls -l /root
+
 ssh root@server
 
 mkdir -p /etc/kubernetes/config
@@ -584,6 +600,7 @@ mv kube-apiserver \
 ls -l /usr/local/bin/kube-*
 
 mkdir -p /var/lib/kubernetes/
+
 mv ca.crt ca.key \
     kube-api-server.key kube-api-server.crt \
     service-accounts.key service-accounts.crt \
@@ -602,12 +619,10 @@ systemctl daemon-reload
 systemctl enable kube-apiserver kube-controller-manager kube-scheduler
 systemctl start  kube-apiserver kube-controller-manager kube-scheduler
 
-
 ss -tlp | grep kube
 LISTEN 0      4096               *:sun-sr-https            *:*    users:(("kube-apiserver",pid=7582,fd=3))                
 LISTEN 0      4096               *:10259                   *:*    users:(("kube-scheduler",pid=7591,fd=3))                
 LISTEN 0      4096               *:10257                   *:*    users:(("kube-controller",pid=7586,fd=3))  
-
 
 systemctl is-active kube-apiserver
 systemctl status kube-apiserver --no-pager
@@ -620,8 +635,6 @@ kubectl cluster-info dump --kubeconfig admin.kubeconfig
 kubectl cluster-info --kubeconfig admin.kubeconfig
 Kubernetes control plane is running at https://127.0.0.1:6443
 
-kubectl get node --kubeconfig admin.kubeconfig
-kubectl get pod -A --kubeconfig admin.kubeconfig
 kubectl get service,ep --kubeconfig admin.kubeconfig
 NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
 service/kubernetes   ClusterIP   10.32.0.1    <none>        443/TCP   2m50s
@@ -629,6 +642,8 @@ service/kubernetes   ClusterIP   10.32.0.1    <none>        443/TCP   2m50s
 NAME                   ENDPOINTS        AGE
 endpoints/kubernetes   10.0.2.15:6443   2m50s
 
+kubectl get node --kubeconfig admin.kubeconfig
+kubectl get pod -A --kubeconfig admin.kubeconfig
 kubectl get clusterroles --kubeconfig admin.kubeconfig
 kubectl get clusterrolebindings --kubeconfig admin.kubeconfig
 kubectl describe clusterroles system:kube-scheduler --kubeconfig admin.kubeconfig
@@ -716,7 +731,8 @@ ssh node-0 ls -l /root/cni-plugins
 ssh node-1 ls -l /root/cni-plugins
 
  
-ssh root@node-1 #  node-1
+# 그리고 node-0에서도 동일한 작업 진행
+ssh root@node-1 
 dnf -y update
 dnf -y install socat conntrack ipset tar
 
@@ -754,7 +770,7 @@ sudo sysctl --system
 sysctl net.ipv4.ip_forward
 # https://kubernetes.io/docs/setup/production-environment/container-runtimes/#install-and-configure-prerequisites
 
-#
+
 mkdir -p /etc/containerd/
 mv containerd-config.toml /etc/containerd/config.toml
 mv containerd.service /etc/systemd/system/
@@ -779,6 +795,7 @@ systemctl status kube-proxy --no-pager
 
 exit
 
+# 검증
 ssh server "kubectl get nodes node-0 -o yaml --kubeconfig admin.kubeconfig" | yq eval
 ssh server "kubectl get pod -A --kubeconfig admin.kubeconfig"
 ssh server "kubectl get nodes -owide --kubeconfig admin.kubeconfig"
@@ -849,6 +866,7 @@ default via 10.0.2.2 dev enp0s8 proto dhcp src 10.0.2.15 metric 100
 192.168.10.0/24 dev enp0s9 proto kernel scope link src 192.168.10.100 metric 101
 
 # after 
+# node-cidr에 대한 라우팅이 추가되엇다
 ssh server ip -c route
 default via 10.0.2.2 dev enp0s8 proto dhcp src 10.0.2.15 metric 100 
 10.0.2.0/24 dev enp0s8 proto kernel scope link src 10.0.2.15 metric 100 
@@ -865,8 +883,8 @@ ssh root@node-1 ip route
 ```
 
 ## ch12 Smoke Test 
-
 ```sh
+# etcd 암호화 테스트
 kubectl create secret generic kubernetes-the-hard-way \
   --from-literal="mykey=mydata"
 
@@ -896,6 +914,7 @@ ssh root@server \
 00000150  45 3a e6 17 6d b8 92 3b  6d 0a                    |E:..m..;m.|
 0000015a
 
+# 파드 생성 테스트
 kubectl create deployment nginx \
   --image=nginx:latest
 
@@ -906,6 +925,7 @@ nginx-b6485fcbb-tcqfv   1/1     Running   0          14s
 POD_NAME=$(kubectl get pods -l app=nginx \
   -o jsonpath="{.items[0].metadata.name}")
 
+# 포트포워딩 테스트
 kubectl port-forward $POD_NAME 8080:80 &
 
 curl --head http://127.0.0.1:8080
@@ -913,12 +933,14 @@ Handling connection for 8080
 HTTP/1.1 200 OK
 Server: nginx/1.29.4
 
+# 로그 동작 테스트
 kubectl logs $POD_NAME
 127.0.0.1 - - [10/Jan/2026:15:03:25 +0000] "HEAD / HTTP/1.1" 200 0 "-" "curl/7.76.1" "-"
 
 kubectl exec -ti $POD_NAME -- nginx -v
 nginx version: nginx/1.29.4
 
+# 노트포트 동작 테스트
 kubectl expose deployment nginx \
   --port 80 --type NodePort
 
