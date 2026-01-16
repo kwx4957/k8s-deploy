@@ -1,0 +1,13 @@
+---
+- hosts: all
+  vars:
+    services:
+      - vboxadd-service  # ssh
+      - rsyslog
+
+  tasks:
+  - name: Check sshd and rsyslog state
+    ansible.builtin.service:
+      name: "{{ item }}"
+      state: started
+    loop: "{{ services }}"

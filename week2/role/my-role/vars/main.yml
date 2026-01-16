@@ -1,0 +1,10 @@
+---
+service_name: apache2
+src_file_path: ../files/index.html
+dest_file_path: /var/www/html
+httpd_packages:
+  - apache2
+  - apache2-doc
+
+supported_distros:
+  - Ubuntu

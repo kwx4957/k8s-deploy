@@ -1,0 +1,11 @@
+---
+- hosts: tnode1
+
+  tasks:
+    - name: Run user add script
+      ansible.builtin.shell: /root/adduser-script.sh
+      register: command_result
+
+    - name: Print msg
+      ansible.builtin.debug:
+        msg: "{{ command_result.stdout }}"

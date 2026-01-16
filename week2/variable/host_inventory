@@ -1,0 +1,13 @@
+[web]
+tnode1 ansible_python_interpreter=/usr/bin/python3
+tnode2 ansible_python_interpreter=/usr/bin/python3
+
+[db]
+tnode3 ansible_python_interpreter=/usr/bin/python3 user=ansible1
+
+[all:children]
+web
+db
+
+[all:vars]
+user=ansible

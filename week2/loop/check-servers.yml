@@ -1,0 +1,20 @@
+---
+- hosts: all
+  tasks:
+    - name: Check sshd state on Debian
+      ansible.builtin.service:
+        name: ssh
+        state: started
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Check sshd state on RedHat
+      ansible.builtin.service:
+        name: sshd
+        state: started
+      when: ansible_facts['os_family'] == 'RedHat'
+
+
+    - name: Check rsyslog state
+      ansible.builtin.service:
+        name: rsyslog
+        state: started

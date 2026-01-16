@@ -1,0 +1,8 @@
+---
+- hosts: db
+  tasks:
+  - name: Print all facts
+    ansible.builtin.debug:
+      msg: >
+        The node's host name is {{ ansible_hostname }}
+        and the ip is {{ ansible_default_ipv4.address }}

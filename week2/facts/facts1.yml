@@ -1,0 +1,8 @@
+---
+- hosts: db
+  tasks:
+  - name: Print all facts
+    ansible.builtin.debug:
+      msg: >
+        The default IPv4 address of {{ ansible_facts.hostname }}
+        is {{ ansible_facts.default_ipv4.address }}

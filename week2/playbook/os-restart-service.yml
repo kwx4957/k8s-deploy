@@ -1,0 +1,13 @@
+- hosts: all
+  tasks:
+    - name: Restart SSH on Debian
+      ansible.builtin.service:
+        name: ssh
+        state: restarted
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Restart SSH on RedHat
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+      when: ansible_facts['os_family'] == 'RedHat'

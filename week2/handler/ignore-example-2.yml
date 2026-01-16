@@ -1,0 +1,13 @@
+---
+- hosts : tnode1
+
+  tasks:
+    - name: Install apache3
+      ansible.builtin.apt:
+        name: apache3
+        state: latest
+      ignore_errors: yes
+
+    - name: Print msg
+      ansible.builtin.debug:
+        msg: "Before task is ignored"

@@ -1,0 +1,21 @@
+[webservers]
+web[1:2].example.com
+
+[db-servers]
+db[01:02].example.com
+
+# IP 범위 설정 : 192.168.4.0 ~ 192.168.4.255 사이의 IP 범위를 표현
+[defaults]
+192.168.4.[0:255]
+
+# 호스트명 범위 설정 : com01.example.com ~ com20.example.com 의 범위를 표현
+[compute]
+com[01:20].example.com
+
+# DNS 범위 설정 : a.dns.example.com , b.dns.example.com , c.dns.example.com 을 의미함
+[dns]
+[a:c].dns.example.com
+
+# IPv6 범위 설정 : 2001:db08::a ~ 2001:db08::f 사이의 IPv6 범위를 표현
+[ipv6]
+2001:db8::[a:f]

@@ -1,0 +1,21 @@
+---
+- hosts: tnode2
+  force_handlers: yes
+
+  tasks:
+    - name: restart rsyslog
+      ansible.builtin.service:
+        name: "rsyslog"
+        state: restarted
+      notify:
+        - print msg
+
+    - name: install apache3
+      ansible.builtin.apt:
+        name: "apache3"
+        state: latest
+
+  handlers:
+    - name: print msg
+      ansible.builtin.debug:
+        msg: "rsyslog is restarted"

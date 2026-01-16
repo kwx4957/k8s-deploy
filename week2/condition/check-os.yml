@@ -1,0 +1,12 @@
+---
+- hosts: all
+  vars:
+    supported_distros:
+      - Ubuntu
+      - CentOS
+
+  tasks:
+    - name: Print supported os
+      ansible.builtin.debug:
+        msg: "This {{ ansible_facts['distribution'] }} need to use apt"
+      when: ansible_facts['distribution'] in supported_distros
