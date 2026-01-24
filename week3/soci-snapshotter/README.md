@@ -1,5 +1,5 @@
 ## SOCI Snapshotter
-SOCI Snapshotter는 containerd의 플러그인으로 표준 OCI 이미지를 지연 로딩(lazy pulling) 방식으로 불러올 수 있다. SOCI는 전체 이미지를 미리 다운로드하지 않고 필요한 부분만 요청 시점에 가져오는 방식으로 동작한다. 이를 위해서 필요한 것이 기존 컨테이너 이미지 내에 파일의 인덱스를 생성한다. 이것이 바로 `soci`이다. 기존 이미지 + SOCI 덕분에 별도의 이미지 변환이 필요없는만큼 SBOM과 같은 공급망 투명성을 그대로 유지될수 잇다.
+SOCI Snapshotter는 containerd의 플러그인으로 표준 OCI 이미지를 지연 로딩(lazy pulling) 방식으로 불러올 수 있다. SOCI는 전체 이미지를 미리 다운로드하지 않고 필요한 부분만 요청 시점에 가져오는 방식으로 동작한다. 이를 위해서 필요한 것이 기존 컨테이너 이미지에 대한 인덱스를 생성이다. 기존 이미지 + SOCI 덕분에 별도의 이미지 변환이 필요없는만큼 SBOM과 같은 공급망 투명성을 그대로 유지될수 잇다.
 
 ![soci](https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2023/07/13/soci-index.png)
 
@@ -38,7 +38,7 @@ vagrant up
 vagrant ssh node1
 
 # 테스트 종료 후 vm 정리
-vagrant destroy -y && rm -rf .vagrant
+vagrant destroy -f && rm -rf .vagrant
 ```
 
 **containerd 설치**
@@ -440,7 +440,7 @@ sudo ./check_running_time.sh
 ```
 
 
-[Ref]
+[Ref]  
 https://github.com/containerd/nerdctl     
 https://github.com/awslabs/soci-snapshotter/blob/main/docs/getting-started.md     
 https://aws.amazon.com/ko/blogs/korea/aws-fargate-enables-faster-container-startup-using-seekable-oci/  
