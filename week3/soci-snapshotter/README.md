@@ -342,7 +342,7 @@ sudo soci ztoc info sha256:11c19b60a43268feceb3724a239df1ffe748df694b04435153ba3
     },
 ...
 
-# 파일에 대한 내용을 읽어온다, 기본값은 표준 출력이다.
+# 하단의 명령은 ztoc 레이어의 내부 파일을 읽는 명령어다. 기본값은 표준 출력이다.
 sudo soci ztoc get-file --help
 sudo soci ztoc get-file sha256:11c19b60a43268feceb3724a239df1ffe748df694b04435153ba3bdd18116574 var/log/apt/term.log
 Setting up libsvn1:arm64 (1.14.5-3) ...
