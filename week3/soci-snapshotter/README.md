@@ -1,5 +1,5 @@
 ## SOCI Snapshotter
-SOCI Snapshotter는 containerd의 플러그인으로 표준 OCI 이미지를 지연 로딩(lazy pulling) 방식으로 불러올 수 있다. SOCI는 전체 이미지를 미리 다운로드하지 않고 필요한 부분만 요청 시점에 가져오는 방식으로 동작한다. 이를 위해서 필요한 것이 기존 컨테이너 이미지 내에 파일의 인덱스를 생성한다. 이것이 바로 `soci index`이다. 기존 이미지 + SOCI 인덱스 덕분에 별도의 이미지 변환이 필요없는만큼 SBOM과 같은 공급망 투명성을 그대로 유지될수 잇다.
+SOCI Snapshotter는 containerd의 플러그인으로 표준 OCI 이미지를 지연 로딩(lazy pulling) 방식으로 불러올 수 있다. SOCI는 전체 이미지를 미리 다운로드하지 않고 필요한 부분만 요청 시점에 가져오는 방식으로 동작한다. 이를 위해서 필요한 것이 기존 컨테이너 이미지 내에 파일의 인덱스를 생성한다. 이것이 바로 `soci`이다. 기존 이미지 + SOCI 덕분에 별도의 이미지 변환이 필요없는만큼 SBOM과 같은 공급망 투명성을 그대로 유지될수 잇다.
 
 ![soci](https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2023/07/13/soci-index.png)
 
@@ -118,11 +118,11 @@ sudo nerdctl images
 REPOSITORY    TAG       IMAGE ID        CREATED           PLATFORM       SIZE       BLOB SIZE
 rabbitmq      latest    5b268c2a05b9    13 seconds ago    linux/arm64    269.3MB    110.8MB
 
-# 컨테이너 이미지를 SOCI 인덱스를 생성하는 과정이다.
+# SOCI를 생성하는 과정이다.
 sudo soci convert docker.io/library/rabbitmq:latest $REGISTRY_USER/rabbitmq-soci:latest
 
-# 상단의 soci 인덱스를 생성하는 과정이 거친 후에 2개의 이미지가 존재한다
-# 첫 번째는 기존 이미지, 두 번째는 SOCI 인덱스 매니페스트이다. 이미지 서멍 변경없이 기존대로 유지된다.
+# 상단의 soci를 생성하고 나서 2개의 이미지가 존재한다
+# 첫 번째는 기존 이미지, 두 번째는 SOCI 인덱스 매니페스트이다. 이 덕분에 기존의 이미지를 변경하지 않고 이미지 서명을 그대로 유지한다.
 sudo nerdctl images
 REPOSITORY               TAG       IMAGE ID        CREATED           PLATFORM       SIZE       BLOB SIZE
 kwx4957/rabbitmq-soci    latest    3e5d14a90d56    56 seconds ago    linux/arm64    269.3MB    110.8MB
