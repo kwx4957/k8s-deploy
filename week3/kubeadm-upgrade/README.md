@@ -1133,13 +1133,8 @@ Run 'kubectl get nodes' on the control-plane to see this node join the cluster.
 # 노드 조회 
 # join 정보 확인
 kubectl get nodes -o wide 
-<<<<<<< HEAD:week3/kubeadm-upgrade/REAMDE.md
 NAME      STATUS   ROLES           AGE    VERSION    INTERNAL-IP      EXTERNAL-IP   OS-IMAGE                        KERNEL-VERSION                   CONTAINER-RUNTIME
 k8s-ctr   Ready    control-plane   158m   v1.34.3    192.168.10.100   <none>        Rocky Linux 10.1 (Red Quartz)   6.12.0-124.28.1.el10_1.aarch64   containerd://2.1.5
 k8s-w1    Ready    <none>          28s    v1.34.3    192.168.10.101   <none>        Rocky Linux 10.0 (Red Quartz)   6.12.0-55.39.1.el10_0.aarch64    containerd://2.1.5
 k8s-w2    Ready    <none>          156m   v1.32.11   192.168.10.102   <none>        Rocky Linux 10.0 (Red Quartz)   6.12.0-55.39.1.el10_0.aarch64    containerd://2.1.5
-
 ```
-=======
-```
->>>>>>> c291efa77d04c6a57a97c09616a1e34f67dc6c5e:week3/kubeadm-upgrade/README.md
