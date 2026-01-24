@@ -1108,8 +1108,34 @@ reboot
 kubeadm token create --print-join-command
 
 # k8s-w1 워커에서 join 실행
-kubeadm join 192.168.10.100:6443 --token 5anzrg.tis5bnnssa8vl0zi --discovery-token-ca-cert-hash sha256:9690db2d44d8440d579bc914daac4c2736254564309517b853912a10b91222e4 
+systemctl start containerd
 
-# 노드 조회
+kubeadm join 192.168.10.100:6443 --token 5anzrg.tis5bnnssa8vl0zi --discovery-token-ca-cert-hash sha256:9690db2d44d8440d579bc914daac4c2736254564309517b853912a10b91222e4 
+[preflight] Running pre-flight checks
+        [WARNING Service-Kubelet]: kubelet service is not enabled, please run 'systemctl enable kubelet.service'
+[preflight] Reading configuration from the "kubeadm-config" ConfigMap in namespace "kube-system"...
+[preflight] Use 'kubeadm init phase upload-config kubeadm --config your-config-file' to re-upload it.
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/instance-config.yaml"
+[patches] Applied patch of type "application/strategic-merge-patch+json" to target "kubeletconfiguration"
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[kubelet-start] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet-start] Starting the kubelet
+[kubelet-check] Waiting for a healthy kubelet at http://127.0.0.1:10248/healthz. This can take up to 4m0s
+[kubelet-check] The kubelet is healthy after 500.534922ms
+[kubelet-start] Waiting for the kubelet to perform the TLS Bootstrap
+
+This node has joined the cluster:
+* Certificate signing request was sent to apiserver and a response was received.
+* The Kubelet was informed of the new secure connection details.
+
+Run 'kubectl get nodes' on the control-plane to see this node join the cluster.
+
+# 노드 조회 
+# join 정보 확인
 kubectl get nodes -o wide 
+NAME      STATUS   ROLES           AGE    VERSION    INTERNAL-IP      EXTERNAL-IP   OS-IMAGE                        KERNEL-VERSION                   CONTAINER-RUNTIME
+k8s-ctr   Ready    control-plane   158m   v1.34.3    192.168.10.100   <none>        Rocky Linux 10.1 (Red Quartz)   6.12.0-124.28.1.el10_1.aarch64   containerd://2.1.5
+k8s-w1    Ready    <none>          28s    v1.34.3    192.168.10.101   <none>        Rocky Linux 10.0 (Red Quartz)   6.12.0-55.39.1.el10_0.aarch64    containerd://2.1.5
+k8s-w2    Ready    <none>          156m   v1.32.11   192.168.10.102   <none>        Rocky Linux 10.0 (Red Quartz)   6.12.0-55.39.1.el10_0.aarch64    containerd://2.1.5
+
 ```
