@@ -932,48 +932,49 @@ cat /etc/containerd/cri-base.json | jq
 
 
 ### 7. 커널 파라미터
-커널 전역 한계
- ├─ fs.file-max
- " sysctl fs.file-max
- ├─ file-nr
- " cat /proc/sys/fs/file-nr
- └─ inode 캐시
- " cat /proc/slabinfo | egrep 'inode_cache|dentry'
+커널 전역 한계  
+├─ fs.file-max  
+├─ file-nr  
+└─ inode 캐시  
+> sysctl fs.file-max  
+> cat /proc/sys/fs/file-nr  
+> cat /proc/slabinfo | egrep 'inode_cache|dentry'  
 
-프로세스 한계
- ├─ RLIMIT_NOFILE
- " ulimit -n (현재 쉘 기준)
- ├─ systemd LimitNOFILE
- " systemctl show containerd | grep LimitNOFILE
- └─ PAM limits.conf
- " cat /etc/security/limits.conf
- " cat /proc/$$/limits (현재 로그인 세션 기준)
+프로세스 한계    
+├─ RLIMIT_NOFILE  
+├─ systemd LimitNOFILE  
+└─ PAM limits.conf  
+> ulimit -n (현재 쉘 기준)  
+> systemctl show containerd | grep LimitNOFILE  
+> cat /etc/security/limits.conf  
+> cat /proc/$$/limits (현재 로그인 세션 기준)  
 
-cgroup 한계
- ├─ pids.max
-" cat /sys/fs/cgroup/system.slice/pids.current
-" cat /sys/fs/cgroup/system.slice/pids.max
- └─ systemd slice 제한
-" systemctl show system.slice -p TasksMax
-" systemctl show kubelet.service -p TasksMax
+cgroup 한계    
+├─ pids.max  
+└─ systemd slice 제한  
+> cat /sys/fs/cgroup/system.slice/pids.current  
+> cat /sys/fs/cgroup/system.slice/pids.max  
+> systemctl show system.slice -p TasksMax  
+> systemctl show kubelet.service -p TasksMax  
 
-파일시스템
- ├─ inode 수
-" stat -f /
- ├─ dentry 캐시
-" cat /proc/sys/fs/dentry-state
- └─ mount 옵션
-" findmnt -o TARGET,OPTIONS
+파일시스템  
+├─ inode 수  
+├─ dentry 캐시  
+└─ mount 옵션
+> stat -f /  
+> cat /proc/sys/fs/dentry-state
+> findmnt -o TARGET,OPTIONS
 
-런타임
- ├─ kubelet / containerd
-" ls /proc/$(pidof kubelet)/fd | wc -l (현재 사용 FD)
-" ls /proc/$(pidof containerd)/fd | wc -l (현재 사용 FD)
- ├─ JVM / Nginx
- └─ epoll / socket 사용량
-" ss -s
-" cat /proc/sys/net/ipv4/ip_local_port_range
-" cat /proc/sys/net/core/somaxconn
+런타임  
+├─ kubelet / containerd  
+├─ JVM / Nginx  
+└─ epoll / socket 사용량  
+> ls /proc/$(pidof containerd)/fd | wc -l(현재 사용 FD)      
+
+> ls /proc/$(pidof kubelet)/fd | wc -l(현재 사용 FD)  
+> ss -s  
+> cat /proc/sys/net/ipv4/ip_local_port_range  
+> cat /proc/sys/net/core/somaxconn  
 
 ```sh
 # 열수 있는 파일 제한 확인
