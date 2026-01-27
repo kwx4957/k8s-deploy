@@ -932,6 +932,49 @@ cat /etc/containerd/cri-base.json | jq
 
 
 ### 7. 커널 파라미터
+커널 전역 한계
+ ├─ fs.file-max
+ " sysctl fs.file-max
+ ├─ file-nr
+ " cat /proc/sys/fs/file-nr
+ └─ inode 캐시
+ " cat /proc/slabinfo | egrep 'inode_cache|dentry'
+
+프로세스 한계
+ ├─ RLIMIT_NOFILE
+ " ulimit -n (현재 쉘 기준)
+ ├─ systemd LimitNOFILE
+ " systemctl show containerd | grep LimitNOFILE
+ └─ PAM limits.conf
+ " cat /etc/security/limits.conf
+ " cat /proc/$$/limits (현재 로그인 세션 기준)
+
+cgroup 한계
+ ├─ pids.max
+" cat /sys/fs/cgroup/system.slice/pids.current
+" cat /sys/fs/cgroup/system.slice/pids.max
+ └─ systemd slice 제한
+" systemctl show system.slice -p TasksMax
+" systemctl show kubelet.service -p TasksMax
+
+파일시스템
+ ├─ inode 수
+" stat -f /
+ ├─ dentry 캐시
+" cat /proc/sys/fs/dentry-state
+ └─ mount 옵션
+" findmnt -o TARGET,OPTIONS
+
+런타임
+ ├─ kubelet / containerd
+" ls /proc/$(pidof kubelet)/fd | wc -l (현재 사용 FD)
+" ls /proc/$(pidof containerd)/fd | wc -l (현재 사용 FD)
+ ├─ JVM / Nginx
+ └─ epoll / socket 사용량
+" ss -s
+" cat /proc/sys/net/ipv4/ip_local_port_range
+" cat /proc/sys/net/core/somaxconn
+
 ```sh
 # 열수 있는 파일 제한 확인
 ctr oci spec | jq | grep -i rlimits -A 5
@@ -978,6 +1021,7 @@ cat /proc/sys/fs/file-max
 9223372036854775807
 
 # 열려 잇는 파일 확인
+# 현재 사용량 / 할당 / 최대량
 cat /proc/sys/fs/file-nr
 1760    0       9223372036854775807
 
@@ -1092,30 +1136,6 @@ vmemory(kbytes)      unlimited
 locks                unlimited
 rtprio               0
 ```
-
-커널 전역 한계
- ├─ fs.file-max
- ├─ file-nr
- └─ inode 캐시
-
-프로세스 한계
- ├─ RLIMIT_NOFILE (ulimit -n)
- ├─ systemd LimitNOFILE
- └─ PAM limits.conf
-
-cgroup 한계
- ├─ pids.max
- └─ systemd slice 제한
-
-파일시스템
- ├─ inode 수
- ├─ dentry 캐시
- └─ mount 옵션
-
-런타임
- ├─ kubelet / containerd
- ├─ JVM / Nginx
- └─ epoll / socket 사용량
 
 
 ### 8. 다운로드 진행
@@ -1987,7 +2007,7 @@ LISTEN 0      4096               *:10249            *:*    users:(("kube-proxy",
 curl 192.168.10.10:10249/metrics
 ```
 
-### 18. (notdone)ipv4 only 환경(특히 bind-address 를 `::` 이 아닌 `0.0.0.0` 으로)이 가능하게 kubespary 로 k8s 구성을 해보자.
+### 18. (notdone) ipv4 only 환경(특히 bind-address 를 `::` 이 아닌 `0.0.0.0` 으로)이 가능하게 kubespary 로 k8s 구성을 해보자.
 ```sh
 grep -rI "::" . | grep bind_address
 ./roles/kubernetes/control-plane/handlers/main.yml:    endpoint: "{{ kube_scheduler_bind_addres if kube_scheduler_bind_address != '::' else 'localhost' }}"
@@ -2023,6 +2043,7 @@ sed -i 's|^kube_network_plugin:.*$|kube_network_plugin: cni|g' inventory/myclust
 sed -i 's|^kube_owner:.*$|kube_owner: root|g' inventory/mycluster/group_vars/k8s_cluster/k8s-cluster.yml
 ```
 https://docs.cilium.io/en/stable/gettingstarted/k8s-install-default
+
 
 
 
