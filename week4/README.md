@@ -1,4 +1,31 @@
-### kubespray 전체 설정 정리
+
+
+## Index 
+> Cloudnet@ k8s Deploy 4주차 스터디를 진행하며 정리한 글입니다.
+
+1. [kubespray 전체 설정 정리](#1-kubespray-전체-설정-정리)
+1. [VM 환경 설정 및 확인](#vm)
+1. [kubespray 배포 진행](#3-kubespray-배포-진행)
+1. [playbook 단계별 진행 분석](#4-playbook-단계별-진행-분석)
+1. [인벤토리 내 전체 환경 변수 확인](#5-인벤토리-내-전체-환경-변수-확인)
+1. [ETCD 사전 작업](#etcd-preinstall)
+1. [Cotainer Engine](#cotainerengine)
+1. [커널 파라미터](#8-커널-파라미터)
+1. [다운로드 진행](#9-다운로드-진행)
+1. [ETCD](#etcd)
+1. [Node](#node)
+1. [Control Plane](#controlplane)
+1. [CNI - cilium](#cni)
+1. [k8s addons](#14-k8s-addons)
+1. [argocd](#15-argocd)
+1. [etcd metrics](#16-etcd-metrics)
+1. [kube-proxy metircs](#17-kube-proxy-metircs)
+1. [ipv4 only 환경](#18-ipv4-only-환경)
+1. [cilium 배포](#19-cilium-배포)
+
+---
+
+### 1. kubespray 전체 설정 정리
 ```sh
 ## k8s
 # containerd 기본 limit 해제
@@ -25,6 +52,11 @@ echo "etcd_metrics_port: 2381" >> inventory/mycluster/group_vars/all/etcd.yml
 # kube-proxy metrics ip 설정
 echo "kube_proxy_metrics_bind_address: 0.0.0.0:10249" >> inventory/mycluster/group_vars/k8s_cluster/kube_control_plane.yml
 
+# kube-apiserver, controll-manager, scheduler의 할당 IP를 IPv4 only로 구성
+sed -i 's|kube_apiserver_bind_address: "::"|kube_apiserver_bind_address: "{{ ip }}"|g' roles/kubernetes/control-plane/defaults/main/main.yml
+sed -i 's|kube_scheduler_bind_address: "::"|kube_scheduler_bind_address: "{{ ip }}"|g' roles/kubernetes/control-plane/defaults/main/kube-scheduler.yml
+sed -i 's|kube_controller_manager_bind_address: "::"|kube_controller_manager_bind_address: "{{ ip }}"|g' roles/kubernetes/control-plane/defaults/main/main.yml
+
 ## Apps
 # helm, metrics-server, node-feature, argoocd 활성화
 sed -i 's|argocd_enabled: false|argocd_enabled: true|g' inventory/mycluster/group_vars/k8s_cluster/addons.yml
@@ -38,6 +70,8 @@ sed -i 's|node_feature_discovery_enabled: false|node_feature_discovery_enabled: 
 grep -iE 'kube_owner:|kube_network_plugin:|kube_proxy_mode|enable_nodelocaldns:|^auto_renew_certificates' inventory/mycluster/group_vars/k8s_cluster/k8s-cluster.yml
 grep -iE 'argocd_enabled:|argocd_namespace:|argocd_admin_password:' inventory/mycluster/group_vars/k8s_cluster/addons.yml
 grep -iE 'helm_enabled:|metrics_server_enabled:|node_feature_discovery_enabled:' inventory/mycluster/group_vars/k8s_cluster/addons.yml
+grep -iE 'kube_apiserver_bind_address:|kube_controller_manager_bind_address:' roles/kubernetes/control-plane/defaults/main/main.yml
+grep -iE 'kube_scheduler_bind_address:' roles/kubernetes/control-plane/defaults/main/kube-scheduler.yml
 
 # 설정 배포
 ANSIBLE_FORCE_COLOR=true ansible-playbook -i inventory/mycluster/inventory.ini -v cluster.yml -e kube_version="1.33.3" | tee kubespray_install.log
@@ -61,10 +95,11 @@ k get svc -n argocd | grep argocd-server
 argocd-server                             NodePort    10.233.51.44    <none>        80:31814/TCP,443:32437/TCP   5m54s
 
 open https://192.168.10.10:32437
-
 ```
 
-### 1. VM 환경 설정 및 확인
+<a id="vm"></a>
+
+### 2. VM 환경 설정 및 확인
 ```sh
 vagrant up
 vagrant status
@@ -108,6 +143,7 @@ systemctl restart sshd
 
 # 공개키 생성
 ssh-keygen -t rsa -N "" -f /root/.ssh/id_rsa
+
 ls -l ~/.ssh
 -rw-------. 1 root root 2602 Jan 26 10:17 id_rsa
 -rw-r--r--. 1 root root  566 Jan 26 10:17 id_rsa.pub
@@ -244,7 +280,7 @@ sed -i 's|# auto_renew_certificates_systemd_calendar|auto_renew_certificates_sys
 grep -iE 'kube_network_plugin:|kube_proxy_mode|enable_nodelocaldns:|^auto_renew_certificates' inventory/mycluster/group_vars/k8s_cluster/k8s-cluster.yml
 
 ## cni
-# (생략 가능) 앞서 cilium을 사용하기 위해 cni로 변경했다면
+# cilium을 사용한다면 생략
 # calico -> flannel, 네트워크 인터페이스 설정
 # cat inventory/mycluster/group_vars/k8s_cluster/k8s-net-flannel.yml
 # sed -i 's|kube_network_plugin: calico|kube_network_plugin: flannel|g' inventory/mycluster/group_vars/k8s_cluster/k8s-cluster.yml
@@ -264,7 +300,7 @@ node_feature_discovery_enabled: true
 ansible-playbook -i inventory/mycluster/inventory.ini -v cluster.yml -e kube_version="1.33.3" --list-tasks 
 ```
 
-### 2. kubespray 배포 진행
+### 3. kubespray 배포 진행
 ```sh
 # kubespray를 통해 k8s 클러스터 설치 진행
 # ~/kubespray 디렉토리에서 작업 진행, ansible.cfg를 활용하기 위해서
@@ -299,9 +335,7 @@ findmnt | tee -a findmnt-2.txt
 sysctl -a | tee -a sysctl-2.txt
 
 # 변경 내역 비교
-# ip_addr는 달라진점 X
 # ss은 kubelet, kube 관련 서비스가 추가되엇음
-# df는 파드 관련 디렉토리가 추가됨
 vi -d ip_addr-1.txt ip_addr-2.txt
 vi -d findmnt-1.txt findmnt-2.txt
 vi -d sysctl-1.txt sysctl-2.txt
@@ -322,7 +356,7 @@ EOF
 source ~/.bashrc
 ```
 
-### 3. playbook 단계별 진행 분석
+### 4. playbook 단계별 진행 분석
 ```sh
 cat kubespray_install.log | grep -E 'PLAY'
 PLAY [Check Ansible version] 
@@ -347,7 +381,7 @@ cat /root/kubespray/cluster.yml
 - name: Install Kubernetes
   ansible.builtin.import_playbook: playbooks/cluster.yml
 
-# 1. 플레이븍 내용을 확인하면 앞서 로그에서 읽엇떤 Play 순서대로 작업이 진행되는 것을 알 수 있다.
+# 1. 플레이븍 내용을 확인하면 앞서 로그에서 읽었던 Play 순차적으로 작업이 진행되는 것을 알 수 있다.
 cat playbooks/cluster.yml
 
 # 2. boilerplate에서 ansibele 버전 확인, 인벤토리 설정 및 검증, bastion ssh config 작업 진행
@@ -427,7 +461,7 @@ cat roles/dynamic_groups/tasks/main.yml
   when: group_names | intersect(item.value) | length > 0
   loop: "{{ group_mappings | dict2items }}"
 
-# 2.3 참조 의존성
+# 2.3 의존성 참조
 cat roles/validate_inventory/meta/main.yml
 dependencies:
   - role: kubespray_defaults
@@ -507,19 +541,17 @@ tree /tmp/releases/
 └── runc-1.3.4.amd64
 
 
-cat playbooks/internal_facts.yml
-tree roles/bootstrap_os/
+tree roles/bootstrap_os
+
+cat roles/bootstrap_os/tasks/rocky.yml 
+- name: Import Centos boostrap for Rocky Linux
+  import_tasks: centos.yml
+cat roles/bootstrap_os/tasks/centos.yml 
 cat roles/bootstrap_os/meta/main.yml
 cat roles/bootstrap_os/defaults/main.yml 
 cat roles/bootstrap_os/files/bootstrap.sh
 cat roles/bootstrap_os/handlers/main.yml 
 cat roles/bootstrap_os/vars/fedora-coreos.yml
-
-cat roles/bootstrap_os/tasks/rocky.yml 
-- name: Import Centos boostrap for Rocky Linux
-  import_tasks: centos.yml
-
-cat roles/bootstrap_os/tasks/centos.yml 
 
 tree roles/network_facts/
 roles/network_facts/
@@ -532,12 +564,12 @@ roles/network_facts/
 cat roles/network_facts/meta/main.yml 
 dependencies:
   - role: kubespray_defaults
-
 cat roles/network_facts/tasks/main.yaml 
 cat roles/network_facts/tasks/no_proxy.yml 
+cat playbooks/internal_facts.yml
 ```
 
-### 4. 인벤토리 내 전체 환경 변수 확인
+### 5. 인벤토리 내 전체 환경 변수 확인
 ```sh
 # 바이너리 설치 경로
 cat inventory/mycluster/group_vars/all/all.yml | grep 'bin_dir'
@@ -667,7 +699,9 @@ tree /tmp
 more /tmp/k8s-ctr
 ```
 
-### 5. ETCD 사전 작업
+<a id="etcd-preinstall"></a>
+
+### 6. ETCD 사전 작업
 ```sh
 # kubespray etcd 진행상황 확인
 more kubespray_install.log | grep -A10 'Prepare for etcd'
@@ -732,11 +766,17 @@ lrwxrwxrwx. 1 root root  14 May 18  2025 99-sysctl.conf -> ../sysctl.conf
 more kubespray_install.log | grep -A30 'ip forward'
 TASK [kubernetes/preinstall : Enable ip forwarding] 
 changed: [k8s-ctr] => {"changed": true}
+
 changed: [k8s-ctr] => (item={'name': 'kernel.keys.root_maxbytes', 'value': 25000000}) => {"ansible_loop_var": "item", "changed": true, "item": {"name": "kernel.keys.root_maxbytes", "value": 25000000}}
+
 changed: [k8s-ctr] => (item={'name': 'kernel.keys.root_maxkeys', 'value': 1000000}) => {"ansible_loop_var": "item", "changed": true, "item": {"name": "kernel.keys.root_maxkeys", "value": 1000000}}
+
 changed: [k8s-ctr] => (item={'name': 'kernel.panic', 'value': 10}) => {"ansible_loop_var": "item", "changed": true, "item": {"name": "kernel.panic", "value": 10}}
+
 changed: [k8s-ctr] => (item={'name': 'kernel.panic_on_oops', 'value': 1}) => {"ansible_loop_var": "item", "changed": true, "item": {"name": "kernel.panic_on_oops", "value": 1}}
+
 changed: [k8s-ctr] => (item={'name': 'vm.overcommit_memory', 'value': 1}) => {"ansible_loop_var": "item", "changed": true, "item": {"name": "vm.overcommit_memory", "value": 1}}
+
 changed: [k8s-ctr] => (item={'name': 'vm.panic_on_oom', 'value': 0}) => {"ansible_loop_var": "item", "changed": true, "item": {"name": "vm.panic_on_oom", "value": 0}}
 
 
@@ -778,13 +818,11 @@ cat roles/kubernetes/preinstall/handlers/main.yml
     name: NetworkManager.service
     state: restarted
   listen: Preinstall | update resolvconf for networkmanager
-
-systemctl restart NetworkManager.service
-journalctl -u NetworkManager.service --no-pager
 ```
 
+<a id="cotainerengine"></a>
 
-### 6. Cotainer Engine 
+### 7. Cotainer Engine 
 ```sh
 # 컨테이너 런타임 관련 역할 확인, 마찬가지로 모든 컨테이너 런타임을 지원한다고 봐도 무방하다.
 tree roles/container-engine/ -L 2
@@ -931,7 +969,7 @@ cat /etc/containerd/cri-base.json | jq
 ```
 
 
-### 7. 커널 파라미터
+### 8. 커널 파라미터
 커널 전역 한계  
 ├─ fs.file-max  
 ├─ file-nr  
@@ -969,7 +1007,7 @@ cgroup 한계
 ├─ kubelet / containerd  
 ├─ JVM / Nginx  
 └─ epoll / socket 사용량  
-> ls /proc/$(pidof containerd)/fd | wc -l(현재 사용 FD)      
+> ls /proc/$(pidof containerd)/fd | wc -l(현재 사용 FD) 
 
 > ls /proc/$(pidof kubelet)/fd | wc -l(현재 사용 FD)  
 > ss -s  
@@ -986,6 +1024,7 @@ ctr oci spec | jq | grep -i rlimits -A 5
         "soft": 1024
       }
 
+# 기존에는 limit가 설정되어 있다
 cat /etc/containerd/cri-base.json | jq | grep -i rlimits -A 5
     "rlimits": []
 
@@ -1138,8 +1177,7 @@ locks                unlimited
 rtprio               0
 ```
 
-
-### 8. 다운로드 진행
+### 9. 다운로드 진행
 ```sh
 tree roles/download/
 roles/download/
@@ -1174,7 +1212,9 @@ flannel/flannel                                        v0.27.3            478ca1
 
 ```
 
-### 9. ETCD
+<a id="etcd"></a>
+### 10. ETCD
+
 ```sh
 # etcd 구조
 tree ~/kubespray/roles/etcd
@@ -1246,6 +1286,7 @@ cat /etc/systemd/system/etcd.service
 [Unit]
 Description=etcd
 After=network.target
+
 [Service]
 Type=notify
 User=root
@@ -1255,6 +1296,7 @@ NotifyAccess=all
 Restart=always
 RestartSec=10s
 LimitNOFILE=40000
+
 [Install]
 WantedBy=multi-user.target
 
@@ -1355,7 +1397,9 @@ tree /etc/ssl/etcd
 cat /etc/ssl/etcd/openssl.conf
 ```
 
-### 10. Node
+<a id="node"></a>
+
+### 11. Node
 ```sh
 # 노드 구조 확인
 roles/kubernetes/node
@@ -1433,7 +1477,9 @@ kubectl describe node | grep pods
   pods:               110
 ```
 
-### 11. Control Plane
+<a id="controlplane"></a>
+
+### 12. Control Plane
 ```sh
 # CP 구조 확인
 tree roles/kubernetes/control-plane/
@@ -1616,8 +1662,11 @@ cat /etc/kubernetes/ssl/front-proxy-client.crt | openssl x509 -text -noout
 ...
 ```
 
-### 12. CNI
-Helm으로 배포한 상태이라 cilium 설정이 존재하지 않지만 참조 용도
+<a id="cni"></a>
+
+### 13. CNI - cilium
+
+Helm으로 배포한 상태이라 cilium 참조하지 않지만 분석하기 위한 목적
 ```sh
 # cni 종류
 tree roles/network_plugin/ -L 1
@@ -1743,7 +1792,7 @@ cat roles/network_plugin/cilium/defaults/main.yml
 cat roles/network_plugin/cilium/templates/values.yaml.j2
 ```
 
-### 13. k8s addons
+### 14. k8s addons
 ```sh
 # local cis 확인
 # local_volume_provisioner, local_path_provisioner
@@ -1839,7 +1888,7 @@ kube-system   metrics-server-7cd7f9897-bn7vd                      4m           4
 
 이후 내용은 맨 앞에 정의한 설정과 동일한 설정으로 task들의 진행 내용과 설정 진행 과정을 설명한 과정으로 스킵해도 된다.
 
-### 14. argocd
+### 15. argocd
 kubespray로 argocd 배포하기, [tag list](https://github.com/kubernetes-sigs/kubespray/blob/master/docs/ansible/ansible.md)에서 apps 태그로 배포 가능하다.
 
 ```sh
@@ -1917,7 +1966,7 @@ argocd-server                             NodePort    10.233.10.164   <none>    
 open https://192.168.10.10:31232
 ```
 
-### 15. etcd 메트릭
+### 16. etcd metrics
 ```sh
 tree roles -L 1 |grep etcd
 ├── etcd
@@ -1961,8 +2010,9 @@ ETCD_METRICS=basic
 ETCD_LISTEN_METRICS_URLS=http://192.168.10.10:2381,http://127.0.0.1:2381
 ```
 
-### 16. kube-proxy 메트릭 설정
+### 17. kube-proxy metircs
 kube-proxy는 `Install the control plane` task에 해당한다. 만일 kube-proxy 메트릭을 수집하기 위해서는 처음에 배포가 진행되어야 할것으로 보인다. 배포 이후 진행하더라도 기존 kube-proxy CM이 수정되지 않는다.
+
 ```sh 
 grep -r "kube_proxy" . |grep metric
 ./roles/kubernetes/control-plane/defaults/main/kube-proxy.yml:kube_proxy_metrics_bind_address: 127.0.0.1:10249
@@ -2008,7 +2058,9 @@ LISTEN 0      4096               *:10249            *:*    users:(("kube-proxy",
 curl 192.168.10.10:10249/metrics
 ```
 
-### 18. (notdone) ipv4 only 환경(특히 bind-address 를 `::` 이 아닌 `0.0.0.0` 으로)이 가능하게 kubespary 로 k8s 구성을 해보자.
+### 18. ipv4 only 환경
+기존 컨트롤 플레인 컴포넌트들의 ip를 `::`애서 `0.0.0.0`으로 전환하기 
+
 ```sh
 grep -rI "::" . | grep bind_address
 ./roles/kubernetes/control-plane/handlers/main.yml:    endpoint: "{{ kube_scheduler_bind_addres if kube_scheduler_bind_address != '::' else 'localhost' }}"
@@ -2019,23 +2071,38 @@ grep -rI "::" . | grep bind_address
 ./roles/kubespray_defaults/defaults/main/main.yml:kube_apiserver_bind_address: "::"
 ./roles/kubespray_defaults/defaults/main/main.yml:  https://{{ kube_apiserver_bind_address | regex_replace('::', '127.0.0.1') | ansible.utils.ipwrap }}:{{ kube_apiserver_port }}
 
-echo "kube_apiserver_bind_address: 0.0.0.0" >> inventory/mycluster/group_vars/k8s_cluster/kube_control_plane.yml
-echo "kube_scheduler_bind_addres: 0.0.0.0"  >> inventory/mycluster/group_vars/k8s_cluster/kube_control_plane.yml
-echo "kube_controller_manager_bind_address: 0.0.0.0" >> inventory/mycluster/group_vars/k8s_cluster/kube_control_plane.yml
+# NIC가 여러 개인 경우 잘못된 NIC를 할당받는다.
+echo 'kube_apiserver_bind_address: "{{ ansible_default_ipv4.address }}"' >> inventory/mycluster/group_vars/k8s_cluster/kube_control_plane.yml
+echo 'kube_scheduler_bind_addres: "{{ ansible_default_ipv4.address }}"'  >> inventory/mycluster/group_vars/k8s_cluster/kube_control_plane.yml
+echo 'kube_controller_manager_bind_address: "{{ ansible_default_ipv4.address }}"'  >> inventory/mycluster/group_vars/k8s_cluster/kube_control_plane.yml
+
+# 그러나 이미 정의된 값이라 변수 우선순위에 따라 main.yml을 따라간다. 즉 ::으로 할당된다
+echo 'kube_controller_manager_bind_address: "{{ ip }}"'  >> inventory/mycluster/group_vars/k8s_cluster/kube_control_plane.yml
+
+cat roles/kubernetes/control-plane/defaults/main/main.yml
+sed -i 's|kube_apiserver_bind_address: "::"|kube_apiserver_bind_address: "{{ ip }}"|g' roles/kubernetes/control-plane/defaults/main/main.yml
+sed -i 's|kube_scheduler_bind_address: "::"|kube_scheduler_bind_address: "{{ ip }}"|g' roles/kubernetes/control-plane/defaults/main/kube-scheduler.yml
+sed -i 's|kube_controller_manager_bind_address: "::"|kube_controller_manager_bind_address: "{{ ip }}"|g' roles/kubernetes/control-plane/defaults/main/main.yml
+
+# 전체 변경내역 확인
+grep -iE 'kube_apiserver_bind_address:|kube_controller_manager_bind_address:' roles/kubernetes/control-plane/defaults/main/main.yml
+grep -iE 'kube_scheduler_bind_address:' roles/kubernetes/control-plane/defaults/main/kube-scheduler.yml
 
 # 배포
 ansible-playbook -i inventory/mycluster/inventory.ini -v cluster.yml \
   -e kube_version="1.33.3" --tags control-plane 
 
+ss -ntp |grep 'ffff'
+
 kubectl describe pod -n kube-system kube-apiserver-k8s-ctr | grep bind-address
-      --bind-address=::
+      --bind-address=192.168.10.10
 kubectl describe pod -n kube-system kube-controller-manager-k8s-ctr |grep bind-address
-      --bind-address=::
+      --bind-address=192.168.10.10
 kubectl describe pod -n kube-system kube-scheduler-k8s-ctr |grep bind-address
-      --bind-address=::
+      --bind-address=192.168.10.10
 ```
 
-### 19. Cilium으로 배포 진행하기
+### 19. Cilium 배포
 - `kube_network_plugin: cni`: 별도의 CNI 플러그인을 설치하지 않고 기본적인 cni 환경만 구성한다.
 - `kube_owner: root`: 기존 계정인 kube 에서 root로 변환하여 별도의 권한 설정없도록 지정
 
@@ -2044,11 +2111,3 @@ sed -i 's|^kube_network_plugin:.*$|kube_network_plugin: cni|g' inventory/myclust
 sed -i 's|^kube_owner:.*$|kube_owner: root|g' inventory/mycluster/group_vars/k8s_cluster/k8s-cluster.yml
 ```
 https://docs.cilium.io/en/stable/gettingstarted/k8s-install-default
-
-
-
-
-Ingress-Nginx 를 Kubespary 를 통해서 배포 설정 해보자.
-실무 환경에 필요한 추가 sysctl 관련 커널 파라미터를 kubespary 설치 시, 적용해보자. 또한 운영을 고려한 파일 규칙과 GitOps 고민을 해보자.
-Harbor 처럼 가상머신으로 내부에 ‘이미지 저장소’ 구성하고, kubespary 에 containerd 의 certs.d 에 ‘미러 저장소’를 우선 순위로 설정 테스트 정리해보자.
-maxParallelImagePulls 값을 적절히 수정 후 kubelet restart 후 파드들 기동하면서 파드 기동 시간 테스트 해보자.
