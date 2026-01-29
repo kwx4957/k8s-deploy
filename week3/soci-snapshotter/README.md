@@ -3,7 +3,7 @@ SOCI Snapshotter는 containerd의 플러그인으로 표준 OCI 이미지를 지
 
 ![soci](https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2023/07/13/soci-index.png)
 
-왼쪽은 기존의 컨테이너 이미지, 오른쪽은 컨테이너 이미지에 대한 soci 구조를 보여준다.
+> 왼쪽은 기존의 컨테이너 이미지, 오른쪽은 컨테이너 이미지에 대한 soci 구조를 보여준다.
 
 
 **기존 방식의 문제점**  
