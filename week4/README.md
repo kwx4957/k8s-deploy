@@ -22,6 +22,7 @@
 1. [kube-proxy metircs](#17-kube-proxy-metircs)
 1. [ipv4 only 환경](#18-ipv4-only-환경)
 1. [cilium 배포](#19-cilium-배포)
+1. [Sonobuoy](#20-sonobuoy)
 
 ---
 
@@ -52,8 +53,11 @@ echo "etcd_metrics_port: 2381" >> inventory/mycluster/group_vars/all/etcd.yml
 # kube-proxy metrics ip 설정
 echo "kube_proxy_metrics_bind_address: 0.0.0.0:10249" >> inventory/mycluster/group_vars/k8s_cluster/kube_control_plane.yml
 
-# kube-apiserver, controll-manager, scheduler의 할당 IP를 IPv4 only로 구성
-sed -i 's|kube_apiserver_bind_address: "::"|kube_apiserver_bind_address: "{{ ip }}"|g' roles/kubernetes/control-plane/defaults/main/main.yml
+# (실패) kube-apiserver, controll-manager, scheduler의 할당 IP를 IPv4 only로 구성
+# ipv4를 할당하게 될 경우 api-server 헬스체크를 127.0.0.1으로 수행한다.
+# 1. roles/kubernetes/control-plane/templates/k8s-certs-renew.sh.j2 
+# 2. roles/kubernetes/control-plane/defaults/main/main.yml
+# sed -i 's|kube_apiserver_bind_address: "::"|kube_apiserver_bind_address: "{{ ip }}"|g' roles/kubernetes/control-plane/defaults/main/main.yml
 sed -i 's|kube_scheduler_bind_address: "::"|kube_scheduler_bind_address: "{{ ip }}"|g' roles/kubernetes/control-plane/defaults/main/kube-scheduler.yml
 sed -i 's|kube_controller_manager_bind_address: "::"|kube_controller_manager_bind_address: "{{ ip }}"|g' roles/kubernetes/control-plane/defaults/main/main.yml
 
@@ -2058,7 +2062,7 @@ LISTEN 0      4096               *:10249            *:*    users:(("kube-proxy",
 curl 192.168.10.10:10249/metrics
 ```
 
-### 18. ipv4 only 환경
+### 18. (실패) ipv4 only 환경
 기존 컨트롤 플레인 컴포넌트들의 ip를 `::`애서 `0.0.0.0`으로 전환하기 
 
 ```sh
@@ -2111,3 +2115,50 @@ sed -i 's|^kube_network_plugin:.*$|kube_network_plugin: cni|g' inventory/myclust
 sed -i 's|^kube_owner:.*$|kube_owner: root|g' inventory/mycluster/group_vars/k8s_cluster/k8s-cluster.yml
 ```
 https://docs.cilium.io/en/stable/gettingstarted/k8s-install-default
+
+### 20. Sonobuoy
+k8s 클러스터 적합성 테스트 도구
+```sh
+wget https://github.com/vmware-tanzu/sonobuoy/releases/download/v0.57.3/sonobuoy_0.57.3_linux_arm64.tar.gz
+
+tar -xvf sonobuoy_0.57.3_linux_arm64.tar.gz 
+
+# 적합성 테스트 진행
+sonobuoy run --wait
+# 설치 검증용 
+sonobuoy run --mode quick
+
+# 테스트 상태 가져오기
+sonobuoy status
+
+# 결과 가져오기
+results=$(sonobuoy retrieve)
+
+# 결과 확인
+sonobuoy results $results
+
+Plugin: e2e
+Status: passed
+Total: 6735
+Passed: 5
+Failed: 0
+Skipped: 6730
+
+Plugin: systemd-logs
+Status: passed
+Total: 1
+Passed: 1
+Failed: 0
+Skipped: 0
+
+Run Details:
+API Server version: v1.33.3
+Node health: 1/1 (100%)
+Pods health: 24/24 (100%)
+Errors detected in files:
+
+# 테스트에 사용된 리소스 삭제 
+sonobuoy delete --wait
+```
+
+https://github.com/vmware-tanzu/sonobuoy?tab=readme-ov-file#getting-started
