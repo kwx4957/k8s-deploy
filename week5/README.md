@@ -412,7 +412,7 @@ echo 'alias kc=kubecolor' >> /etc/profile
 echo 'complete -F __start_kubectl k' >> /etc/profile
 ```
 
-### ansible [변수 우선순위](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_variables.html#understanding-variable-precedence) 확인
+### ansible 변수 우선순위 확인 [^1]
 
 ```sh
 # k8s 클러스터 공용 변수 설정
@@ -1793,3 +1793,6 @@ scp k8s-node1:/root/.kube/config /root/.kube/
 cat /root/.kube/config | grep server
 sed -i 's/127.0.0.1/192.168.10.10/g' /root/.kube/config
 ```
+
+[^1]: https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_variables.html#understanding-variable-precedence
+
