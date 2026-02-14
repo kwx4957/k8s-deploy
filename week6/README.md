@@ -419,7 +419,7 @@ From repo    : internal-baseos
 systemctl disable --now nginx && dnf remove -y nginx
 ```
 
-### Admin 서버 offline 사전 작업[^1]
+### Admin 서버 offline 사전 작업 [^1]
 ```sh
 # 가용용량 확인
 lsblk
@@ -887,7 +887,7 @@ patches/
 tree kubespray-2.30.0/ -L 1
 ```
 
-### kubespray 설치[^2]
+### kubespray 설치 [^2]
 ```sh
 python --version
 Python 3.12.12
